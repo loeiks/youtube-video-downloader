@@ -473,9 +473,9 @@ func processDownload(ctx context.Context, url string) (outputFile, filename stri
 	}
 
 	// Log tmpfs usage during processing (after downloads, before merge)
-	_, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] tmpfs During processing: %.1fMB used (%.1f%%), %.1fMB available",
-		usedMB, usagePercent, availableMB)
+	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
+	log.Printf("[INFO] tmpfs During processing: %.1fMB total, %.1fMB used (%.1f%%), %.1fMB available",
+		totalMB, usedMB, usagePercent, availableMB)
 
 	if err = mergeStreams(ctx, videoFile, audioFile, outputFile); err != nil {
 		return "", "", tempFiles, fmt.Errorf("merge failed: %w", err)
