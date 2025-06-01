@@ -1,0 +1,7 @@
+.git
+.gitignore
+README.md
+downloads/
+*.tmp
+*.mp4
+*.exe

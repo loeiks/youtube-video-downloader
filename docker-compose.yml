@@ -1,0 +1,60 @@
+# Docker Compose version (3.8 supports most modern Docker features)
+version: '3.8'
+
+services:
+  youtube-downloader:
+    build: 
+      context: .              # Build context (current directory)
+      dockerfile: Dockerfile  # Dockerfile to use (explicit specification)
+    
+    # Container name (easier to manage with docker commands)
+    # Without this, Docker generates random names like "project_youtube-downloader_1"
+    container_name: youtube-downloader
+    
+    # Port mapping: host_port:container_port
+    # Maps port 7839 on your computer to port 7839 in container
+    ports:
+      - "7839:7839"
+    
+    # Environment variables that override Dockerfile defaults
+    # These customize the application behavior without rebuilding
+    environment:
+      - MAX_VIDEO_HEIGHT=1080    # Cap video quality at 1080p
+      - MAX_CONCURRENT=3         # Allow 3 simultaneous downloads
+      - FFMPEG_PRESET=veryfast   # Balance between speed and quality
+      - CLEANUP_INTERVAL=15m     # Clean temp files every 15 minutes
+      - DOWNLOAD_TIMEOUT=15m     # Timeout downloads after 15 minutes
+      - MIN_DISK_SPACE_GB=2      # Require 2GB free space before downloads
+    
+    # Volume mounts: volume_name:container_path
+    # Maps the youtube_temp volume to container's temp directory
+    volumes:
+      - youtube_temp:/tmp/youtube-downloads
+    
+    # Restart policy: unless-stopped means restart automatically except manual stops
+    # Other options: no, always, on-failure
+    restart: unless-stopped
+    
+    # Resource limits to prevent container from consuming all system resources
+    deploy:
+      resources:
+        limits:
+          memory: 4G      # Maximum 4GB RAM usage
+          cpus: '4.0'     # Maximum 4 CPU cores
+    
+    # Logging configuration to prevent log files from growing infinitely
+    logging:
+      driver: "json-file"       # Use JSON file logging driver
+      options:
+        max-size: "10m"         # Maximum 10MB per log file
+        max-file: "3"           # Keep maximum 3 log files (30MB total)
+    
+    # Security options
+    security_opt:
+      # Prevent container from gaining new privileges (security hardening)
+      # Helps prevent privilege escalation attacks
+      - no-new-privileges:true
+
+# Define named volumes used by services
+volumes:
+  
