@@ -301,11 +301,16 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	if stat, err := os.Stat(outputFile); err == nil {
 		fileSize = stat.Size()
 	}
-
 	defer func() {
-		cleanupFiles(append(tempFiles, outputFile)...)
-		// Log tmpfs usage after cleanup
-		log.Printf("[INFO] Cleaned up temp files for: %s", filename)
+		filesToClean := append(tempFiles, outputFile)
+		var totalSize int64
+		for _, file := range filesToClean {
+			if stat, err := os.Stat(file); err == nil {
+				totalSize += stat.Size()
+			}
+		}
+		cleanupFiles(filesToClean...)
+		log.Printf("[INFO] Cleaned up temp files for: %s (%.2fMB removed)", filename, float64(totalSize)/(1024*1024))
 	}()
 
 	if err := streamFileToClient(w, outputFile, filename); err != nil {
