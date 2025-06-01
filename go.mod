@@ -2,7 +2,10 @@ module youtube-downloader
 
 go 1.24.3
 
-require github.com/kkdai/youtube/v2 v2.10.4
+require (
+	github.com/kkdai/youtube/v2 v2.10.4
+	golang.org/x/sys v0.33.0
+)
 
 require (
 	github.com/bitly/go-simplejson v0.5.1 // indirect

@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/kkdai/youtube/v2"
@@ -152,28 +151,6 @@ func loadConfigFromEnv() {
 	}
 }
 
-// Get tmpfs usage statistics
-func getTmpfsUsage() (totalMB, usedMB, availableMB float64, usagePercent float64) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(config.TempDir, &stat); err != nil {
-		return 0, 0, 0, 0
-	}
-
-	total := stat.Blocks * uint64(stat.Bsize)
-	available := stat.Bavail * uint64(stat.Bsize)
-	used := total - available
-
-	totalMB = float64(total) / (1024 * 1024)
-	usedMB = float64(used) / (1024 * 1024)
-	availableMB = float64(available) / (1024 * 1024)
-	
-	if total > 0 {
-		usagePercent = float64(used) / float64(total) * 100
-	}
-
-	return totalMB, usedMB, availableMB, usagePercent
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC)
 
@@ -190,7 +167,7 @@ func main() {
 
 	// Log initial tmpfs usage
 	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] tmpfs Status: %.1fMB total, %.1fMB used (%.1f%%), %.1fMB available", 
+	log.Printf("[INFO] Disk Status: %.1fMB total, %.1fMB used (%.1f%%), %.1fMB available",
 		totalMB, usedMB, usagePercent, availableMB)
 
 	go startCleanupRoutine()
@@ -219,20 +196,6 @@ func startCleanupRoutine() {
 	for range ticker.C {
 		cleanupTempFiles()
 	}
-}
-
-func checkDiskSpace(requiredBytes int64) error {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(config.TempDir, &stat); err != nil {
-		return fmt.Errorf("failed to check disk space: %w", err)
-	}
-
-	available := int64(stat.Bavail * uint64(stat.Bsize))
-	if available < requiredBytes {
-		return fmt.Errorf("insufficient disk space: need %.1fGB, have %.1fGB",
-			float64(requiredBytes)/(1024*1024*1024), float64(available)/(1024*1024*1024))
-	}
-	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -281,11 +244,11 @@ func tmpfsHandler(w http.ResponseWriter, r *http.Request) {
 	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
 
 	stats := map[string]interface{}{
-		"tmpfs_total_mb":     totalMB,
-		"tmpfs_used_mb":      usedMB,
-		"tmpfs_available_mb": availableMB,
+		"tmpfs_total_mb":      totalMB,
+		"tmpfs_used_mb":       usedMB,
+		"tmpfs_available_mb":  availableMB,
 		"tmpfs_usage_percent": usagePercent,
-		"is_tmpfs_available": totalMB > 0,
+		"is_tmpfs_available":  totalMB > 0,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -296,7 +259,7 @@ func cleanupTempFiles() {
 	log.Printf("[INFO] Starting cleanup of files older than %v", config.MaxFileAge)
 
 	// Log tmpfs usage before cleanup
-	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
+	_, usedMB, availableMB, usagePercent := getTmpfsUsage()
 	log.Printf("[INFO] tmpfs Before cleanup: %.1fMB used (%.1f%%), %.1fMB available",
 		usedMB, usagePercent, availableMB)
 
@@ -329,7 +292,7 @@ func cleanupTempFiles() {
 	}
 
 	// Log cleanup results and tmpfs usage after cleanup
-	totalMB, usedMB, availableMB, usagePercent = getTmpfsUsage()
+	_, usedMB, availableMB, usagePercent = getTmpfsUsage()
 	if cleanedCount == 0 {
 		log.Printf("[INFO] Cleanup completed: No files to remove")
 	} else {
@@ -364,7 +327,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log tmpfs usage before download
-	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
+	_, usedMB, availableMB, usagePercent := getTmpfsUsage()
 	log.Printf("[INFO] tmpfs Before download: %.1fMB used (%.1f%%), %.1fMB available",
 		usedMB, usagePercent, availableMB)
 
@@ -398,7 +361,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		cleanupFiles(append(tempFiles, outputFile)...)
-		
+
 		// Log tmpfs usage after cleanup
 		_, usedMB, availableMB, usagePercent := getTmpfsUsage()
 		log.Printf("[INFO] tmpfs After cleanup: %.1fMB used (%.1f%%), %.1fMB available",
