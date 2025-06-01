@@ -161,22 +161,12 @@ func main() {
 		log.Fatalf("[ERROR] Failed to create temp directory: %v", err)
 	}
 
-	if err := checkDiskSpace(config.MinDiskSpaceGB * 1024 * 1024 * 1024); err != nil {
-		log.Fatalf("[ERROR] %v", err)
-	}
-
-	// Log initial tmpfs usage
-	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] Disk Status: %.1fMB total, %.1fMB used (%.1f%%), %.1fMB available",
-		totalMB, usedMB, usagePercent, availableMB)
-
 	go startCleanupRoutine()
 
 	http.HandleFunc("/download", downloadHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/metrics", metricsHandler)
 	http.HandleFunc("/config", configHandler)
-	http.HandleFunc("/tmpfs", tmpfsHandler)
 
 	log.Printf("[INFO] YouTube Downloader Server starting on port %s", config.ServerPort)
 	log.Printf("[INFO] Config: Max Quality: %dp, Concurrent: %d, Preset: %s",
@@ -204,12 +194,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := checkDiskSpace(config.MinDiskSpaceGB * 1024 * 1024 * 1024); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, "UNHEALTHY: %v", err)
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
 }
@@ -234,34 +218,8 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(config)
 }
 
-// tmpfs monitoring endpoint
-func tmpfsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
-
-	stats := map[string]interface{}{
-		"tmpfs_total_mb":      totalMB,
-		"tmpfs_used_mb":       usedMB,
-		"tmpfs_available_mb":  availableMB,
-		"tmpfs_usage_percent": usagePercent,
-		"is_tmpfs_available":  totalMB > 0,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
 func cleanupTempFiles() {
 	log.Printf("[INFO] Starting cleanup of files older than %v", config.MaxFileAge)
-
-	// Log tmpfs usage before cleanup
-	_, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] tmpfs Before cleanup: %.1fMB used (%.1f%%), %.1fMB available",
-		usedMB, usagePercent, availableMB)
 
 	var cleanedCount int
 	var totalSize int64
@@ -291,16 +249,12 @@ func cleanupTempFiles() {
 		return
 	}
 
-	// Log cleanup results and tmpfs usage after cleanup
-	_, usedMB, availableMB, usagePercent = getTmpfsUsage()
 	if cleanedCount == 0 {
 		log.Printf("[INFO] Cleanup completed: No files to remove")
 	} else {
 		totalCleanedMB := float64(totalSize) / (1024 * 1024)
 		log.Printf("[INFO] Cleanup completed: %d files removed (%.2f MB freed)", cleanedCount, totalCleanedMB)
 	}
-	log.Printf("[INFO] tmpfs After cleanup: %.1fMB used (%.1f%%), %.1fMB available",
-		usedMB, usagePercent, availableMB)
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -326,18 +280,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log tmpfs usage before download
-	_, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] tmpfs Before download: %.1fMB used (%.1f%%), %.1fMB available",
-		usedMB, usagePercent, availableMB)
-
 	log.Printf("[INFO] Processing download: %s", url)
-
-	if err := checkDiskSpace(config.MinDiskSpaceGB * 1024 * 1024 * 1024); err != nil {
-		http.Error(w, fmt.Sprintf("Server storage full: %v", err), http.StatusInsufficientStorage)
-		metrics.RecordDownload(false, 0)
-		return
-	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), config.DownloadTimeout)
 	defer cancel()
@@ -361,11 +304,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		cleanupFiles(append(tempFiles, outputFile)...)
-
 		// Log tmpfs usage after cleanup
-		_, usedMB, availableMB, usagePercent := getTmpfsUsage()
-		log.Printf("[INFO] tmpfs After cleanup: %.1fMB used (%.1f%%), %.1fMB available",
-			usedMB, usagePercent, availableMB)
 		log.Printf("[INFO] Cleaned up temp files for: %s", filename)
 	}()
 
@@ -398,9 +337,6 @@ func processDownload(ctx context.Context, url string) (outputFile, filename stri
 	// Check disk space for estimated download
 	estimatedSize := int64(bestVideo.ContentLength + bestAudio.ContentLength)
 	if estimatedSize > 0 {
-		if err := checkDiskSpace(estimatedSize * 3); err != nil {
-			return "", "", nil, fmt.Errorf("insufficient space: %w", err)
-		}
 		log.Printf("[INFO] Estimated download size: %.2f MB", float64(estimatedSize)/(1024*1024))
 	}
 
@@ -434,11 +370,6 @@ func processDownload(ctx context.Context, url string) (outputFile, filename stri
 	if audioErr != nil {
 		return "", "", tempFiles, fmt.Errorf("audio download failed: %w", audioErr)
 	}
-
-	// Log tmpfs usage during processing (after downloads, before merge)
-	totalMB, usedMB, availableMB, usagePercent := getTmpfsUsage()
-	log.Printf("[INFO] tmpfs During processing: %.1fMB total, %.1fMB used (%.1f%%), %.1fMB available",
-		totalMB, usedMB, usagePercent, availableMB)
 
 	if err = mergeStreams(ctx, videoFile, audioFile, outputFile); err != nil {
 		return "", "", tempFiles, fmt.Errorf("merge failed: %w", err)
