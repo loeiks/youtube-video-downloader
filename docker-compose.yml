@@ -57,4 +57,14 @@ services:
 
 # Define named volumes used by services
 volumes:
-  
+  # youtube_temp volume configuration
+  youtube_temp:
+    driver: local               # Use local storage driver
+    driver_opts:
+      type: tmpfs               # Store in RAM instead of disk
+      device: tmpfs             # tmpfs device type
+      # Options for tmpfs:
+      # size=2G: Maximum 2GB of RAM usage
+      # uid=1001: User ID (matches our appuser from Dockerfile)
+      # gid=1001: Group ID (matches our appgroup from Dockerfile)
+      o: size=2G,uid=1001,gid=1001
