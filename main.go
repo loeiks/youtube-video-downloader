@@ -164,6 +164,7 @@ func main() {
 	go startCleanupRoutine()
 
 	http.HandleFunc("/download", downloadHandler)
+	http.HandleFunc("/watch", downloadHandler)
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/metrics", metricsHandler)
 	http.HandleFunc("/config", configHandler)
@@ -265,9 +266,14 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	url := r.URL.Query().Get("url")
 	if url == "" {
-		http.Error(w, "Missing required parameter: url", http.StatusBadRequest)
-		metrics.RecordDownload(false, 0)
-		return
+		videoId := r.URL.Query().Get("v")
+		if videoId != "" {
+			http.Error(w, "Missing required parameter: url", http.StatusBadRequest)
+			metrics.RecordDownload(false, 0)
+			return
+		}
+
+		url = "https://www.youtube.com/watch?v=" + videoId
 	}
 
 	// Rate limiting
