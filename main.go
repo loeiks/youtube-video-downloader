@@ -267,7 +267,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Query().Get("url")
 	if url == "" {
 		videoId := r.URL.Query().Get("v")
-		if videoId != "" {
+		if videoId == "" {
 			http.Error(w, "Missing required parameter: url", http.StatusBadRequest)
 			metrics.RecordDownload(false, 0)
 			return
